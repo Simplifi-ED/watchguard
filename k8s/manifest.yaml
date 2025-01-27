@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: watchguard
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: watchguard-service-account
+  namespace: watchguard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: resource-watcher
+  namespace: watchguard
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: resource-watcher
+  namespace: watchguard
+subjects:
+- kind: ServiceAccount
+  name: watchguard-service-account
+  namespace: watchguard
+roleRef:
+  kind: ClusterRole
+  name: resource-watcher
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watchguard-deployment
+  namespace: watchguard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: watchguard-app
+  template:
+    metadata:
+      labels:
+        app: watchguard-app
+    spec:
+      serviceAccountName: watchguard-service-account
+      containers:
+        - name: watchguard-container
+          image: muandane/watchguard:v1.0.1
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
