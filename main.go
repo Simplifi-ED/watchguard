@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -19,6 +21,23 @@ var preferredVersions = map[string]string{
 	"flowcontrol.apiserver.k8s.io/v1beta3": "flowcontrol.apiserver.k8s.io/v1",
 }
 
+type Config struct {
+	DatabaseURL string
+}
+type EventHandler struct {
+	db *pgxpool.Pool
+}
+
+func NewEventHandler(db *pgxpool.Pool) *EventHandler {
+	return &EventHandler{db: db}
+}
+func (h *EventHandler) saveEvent(ctx context.Context, eventType, resourceType, resourceGroup, namespace, name string) error {
+	_, err := h.db.Exec(ctx,
+		`INSERT INTO k8s_events (event_type, resource_type, resource_group, namespace, resource_name) 
+         VALUES ($1, $2, $3, $4, $5)`,
+		eventType, resourceType, resourceGroup, namespace, name)
+	return err
+}
 func main() {
 	// Get in-cluster config
 	config, err := rest.InClusterConfig()
@@ -43,7 +62,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get server resources: %v", err)
 	}
+	ctx := context.Background()
 
+	// Initialize database
+	dbpool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		log.Fatalf("Unable to connect to database: %v", err)
+	}
+	defer dbpool.Close()
+
+	eventHandler := NewEventHandler(dbpool)
 	// Create dynamic informer factory
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, time.Minute)
 	// Track all GVRs we're watching
@@ -98,40 +126,38 @@ func main() {
 					if !ok {
 						return
 					}
-					log.Printf("[ADDED] %s.%s: %s/%s",
-						resourceCopy.Name,
-						gv.Group,
-						metadata.GetNamespace(),
-						metadata.GetName())
+					err := eventHandler.saveEvent(ctx, "ADDED", resourceCopy.Name, gv.Group,
+						metadata.GetNamespace(), metadata.GetName())
+					if err != nil {
+						log.Printf("Error saving ADD event: %v", err)
+					}
 				},
 				UpdateFunc: func(old, new interface{}) {
 					metadata, ok := new.(metav1.Object)
 					if !ok {
 						return
 					}
-					log.Printf("[UPDATED] %s.%s: %s/%s",
-						resourceCopy.Name,
-						gv.Group,
-						metadata.GetNamespace(),
-						metadata.GetName())
+					err := eventHandler.saveEvent(ctx, "UPDATED", resourceCopy.Name, gv.Group,
+						metadata.GetNamespace(), metadata.GetName())
+					if err != nil {
+						log.Printf("Error saving UPDATE event: %v", err)
+					}
 				},
 				DeleteFunc: func(obj interface{}) {
 					metadata, ok := obj.(metav1.Object)
 					if !ok {
 						return
 					}
-					log.Printf("[DELETED] %s.%s: %s/%s",
-						resourceCopy.Name,
-						gv.Group,
-						metadata.GetNamespace(),
-						metadata.GetName())
+					err := eventHandler.saveEvent(ctx, "DELETED", resourceCopy.Name, gv.Group,
+						metadata.GetNamespace(), metadata.GetName())
+					if err != nil {
+						log.Printf("Error saving DELETE event: %v", err)
+					}
 				},
 			})
 		}
 	}
 
-	// Start all informers
-	ctx := context.Background()
 	factory.Start(ctx.Done())
 	factory.WaitForCacheSync(ctx.Done())
 
