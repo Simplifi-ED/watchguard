@@ -51,7 +51,7 @@ spec:
       serviceAccountName: watchguard-service-account
       containers:
         - name: watchguard-container
-          image: muandane/watchguard:v1.0.1
+          image: muandane/watchguard:v1.0.2
           ports:
             - containerPort: 8080
           resources:
@@ -61,3 +61,43 @@ spec:
             limits:
               cpu: 200m
               memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: watchguard-service
+  namespace: watchguard
+  labels:
+    app: watchguard-app 
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app: watchguard-app
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: watchguard-monitor
+  namespace: watchguard
+  labels:
+    release: mon
+    heritage: Helm 
+spec:
+  selector:
+    matchLabels:
+      app: watchguard-app
+  namespaceSelector:
+    matchNames:
+      - watchguard
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
