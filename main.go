@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -19,6 +22,10 @@ var preferredVersions = map[string]string{
 	"flowcontrol.apiserver.k8s.io/v1beta3": "flowcontrol.apiserver.k8s.io/v1",
 }
 
+func init() {
+	prometheus.MustRegister(resourceEvents)
+	prometheus.MustRegister(watchedResourcesGauge)
+}
 func main() {
 	// Get in-cluster config
 	config, err := rest.InClusterConfig()
@@ -98,6 +105,7 @@ func main() {
 					if !ok {
 						return
 					}
+					resourceEvents.WithLabelValues("add", gv.Group, resourceCopy.Name).Inc()
 					log.Printf("[ADDED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,
@@ -109,6 +117,7 @@ func main() {
 					if !ok {
 						return
 					}
+					resourceEvents.WithLabelValues("update", gv.Group, resourceCopy.Name).Inc()
 					log.Printf("[UPDATED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,
@@ -120,6 +129,7 @@ func main() {
 					if !ok {
 						return
 					}
+					resourceEvents.WithLabelValues("delete", gv.Group, resourceCopy.Name).Inc()
 					log.Printf("[DELETED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,
@@ -136,6 +146,15 @@ func main() {
 	factory.WaitForCacheSync(ctx.Done())
 
 	log.Printf("Actively watching %d resource types", len(watchedResources))
+
+	watchedResourcesGauge.Set(float64(len(watchedResources)))
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		if err := http.ListenAndServe(":2112", nil); err != nil {
+			log.Fatalf("Failed to start metrics server: %v", err)
+		}
+	}()
 	<-ctx.Done()
 }
 
