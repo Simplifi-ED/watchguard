@@ -151,7 +151,7 @@ func main() {
 
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		if err := http.ListenAndServe(":2112", nil); err != nil {
+		if err := http.ListenAndServe(":8080", nil); err != nil {
 			log.Fatalf("Failed to start metrics server: %v", err)
 		}
 	}()
