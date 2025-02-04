@@ -106,6 +106,11 @@ func main() {
 						return
 					}
 					resourceEvents.WithLabelValues("add", gv.Group, resourceCopy.Name).Inc()
+					watchEvents.With(prometheus.Labels{
+						"resource":   resourceCopy.Name,
+						"namespace":  metadata.GetNamespace(),
+						"event_type": "add",
+					}).Inc()
 					log.Printf("[ADDED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,
@@ -118,6 +123,11 @@ func main() {
 						return
 					}
 					resourceEvents.WithLabelValues("update", gv.Group, resourceCopy.Name).Inc()
+					watchEvents.With(prometheus.Labels{
+						"resource":   resourceCopy.Name,
+						"namespace":  metadata.GetNamespace(),
+						"event_type": "update",
+					}).Inc()
 					log.Printf("[UPDATED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,
@@ -130,6 +140,11 @@ func main() {
 						return
 					}
 					resourceEvents.WithLabelValues("delete", gv.Group, resourceCopy.Name).Inc()
+					watchEvents.With(prometheus.Labels{
+						"resource":   resourceCopy.Name,
+						"namespace":  metadata.GetNamespace(),
+						"event_type": "delete",
+					}).Inc()
 					log.Printf("[DELETED] %s.%s: %s/%s",
 						resourceCopy.Name,
 						gv.Group,

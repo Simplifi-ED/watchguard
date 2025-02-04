@@ -17,4 +17,12 @@ var (
 			Help: "Total number of Kubernetes resources being watched",
 		},
 	)
+
+	watchEvents = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "k8s_watch_events_total",
+			Help: "Total number of Kubernetes watch events",
+		},
+		[]string{"resource", "namespace", "event_type"},
+	)
 )
